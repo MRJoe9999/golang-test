@@ -152,7 +152,7 @@ import (
 	"time"
 )
 
-func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts *[]string) {
+func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts *[]string, mu *sync.Mutex, totalPorts *int, progress *int) {
 
 	defer wg.Done()
 	for addr := range task {
@@ -160,7 +160,12 @@ func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts 
 		conn, err := dialer.Dial("tcp", addr)
 		if err == nil {
 
+			mu.Lock()
+
 			*openPorts = append(*openPorts, addr)
+			*progress++
+
+			mu.Unlock()
 
 			conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 			buf := make([]byte, 1024)
@@ -173,10 +178,19 @@ func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts 
 
 			fmt.Printf("Connection to %s was successful\n", addr)
 			conn.Close()
+			mu.Lock() // Lock to safely modify the progress in a concurrent environment
+			*progress++
+			fmt.Printf("Scanning port %d/%d - Progress: %.2f%%\n", *progress, *totalPorts, float64(*progress)*100/float64(*totalPorts))
+			mu.Unlock()
 		} else {
 			// Failed connection, print an error message
 			fmt.Printf("Failed to connect to %s: %v\n", addr, err)
+			mu.Lock() // Lock to safely modify the progress in a concurrent environment
+			*progress++
+			fmt.Printf("Scanning port %d/%d - Progress: %.2f%%\n", *progress, *totalPorts, float64(*progress)*100/float64(*totalPorts))
+			mu.Unlock()
 		}
+
 	}
 }
 
@@ -200,6 +214,7 @@ func main() {
 	task := make(chan string, *workers)
 
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 
 	dialer := net.Dialer{
 		Timeout: time.Duration(*timeout) * time.Second,
@@ -207,9 +222,15 @@ func main() {
 
 	var openPorts []string
 
+	progress := 0
+	progressPtr := &progress
+	totalPorts := *endPort - *startPort + 1
+
+	totalPortsPtr := &totalPorts
+
 	for i := 0; i < *workers; i++ {
 		wg.Add(1)
-		go labours(&wg, task, dialer, &openPorts)
+		go labours(&wg, task, dialer, &openPorts, &mu, totalPortsPtr, progressPtr)
 	}
 
 	for j := *startPort; j <= *endPort; j++ {
