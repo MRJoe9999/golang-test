@@ -148,6 +148,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -194,62 +195,78 @@ func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts 
 	}
 }
 
+func scanTarget(target string, startPort int, endPort int, workers int, timeout int) {
+	task := make(chan string, workers)
+	var wg sync.WaitGroup
+
+	dialer := net.Dialer{
+		Timeout: time.Duration(timeout) * time.Second,
+	}
+
+	var openPorts []string
+	totalPorts := endPort - startPort + 1
+	progress := 0
+	mu := sync.Mutex{}
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go labours(&wg, task, dialer, &openPorts, &mu, &totalPorts, &progress)
+	}
+
+	// Distribute tasks for the current target
+	for j := startPort; j <= endPort; j++ {
+		port := strconv.Itoa(j)
+		address := net.JoinHostPort(target, port)
+		task <- address
+	}
+	close(task)
+
+	// Wait for all workers to finish
+	wg.Wait()
+
+	duration := time.Since(time.Now())
+
+	// Print results for the current target
+	fmt.Printf("\nScan complete for target: %s\n", target)
+	fmt.Printf("Open ports: %v\n", openPorts)
+	fmt.Printf("Number of open ports: %d\n", len(openPorts))
+	fmt.Printf("Time taken: %v\n", duration)
+	fmt.Printf("Total ports scanned: %d\n", totalPorts)
+
+}
+
 func main() {
-	target := flag.String("target", "localhost", "Target IP or hostname")
+	targets := flag.String("targets", "localhost", "Comma-separated list of target IPs or hostnames to scan")
 
 	startPort := flag.Int("start-port", 1, "Starting port number")
 	endPort := flag.Int("end-port", 1024, "Ending port number")
 
 	workers := flag.Int("workers", 100, "Number of concurrent workers")
 
-	timeout := flag.Int("timeout", 2, "Connectione timout in seconds")
+	timeout := flag.Int("timeout", 2, "Connection timeout in seconds")
 
 	flag.Parse()
 
-	fmt.Println("Scanning target:", *target)
+	// Split the targets into a slice
+	targetList := strings.Split(*targets, ",")
+
+	fmt.Printf("Scanning targets: %v\n", targetList)
 	fmt.Printf("Scanning ports from %d to %d\n", *startPort, *endPort)
 	fmt.Printf("Using %d concurrent workers\n", *workers)
 	fmt.Printf("Connection timeout: %d seconds\n", *timeout)
 
-	task := make(chan string, *workers)
-
+	// Use goroutines to scan each target concurrently
 	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	dialer := net.Dialer{
-		Timeout: time.Duration(*timeout) * time.Second,
-	}
-
-	var openPorts []string
-
-	progress := 0
-	progressPtr := &progress
-	totalPorts := *endPort - *startPort + 1
-
-	totalPortsPtr := &totalPorts
-
-	for i := 0; i < *workers; i++ {
+	for _, target := range targetList {
 		wg.Add(1)
-		go labours(&wg, task, dialer, &openPorts, &mu, totalPortsPtr, progressPtr)
+		go func(target string) {
+			defer wg.Done()
+			scanTarget(target, *startPort, *endPort, *workers, *timeout)
+		}(target)
 	}
 
-	for j := *startPort; j <= *endPort; j++ {
-		port := strconv.Itoa(j)
-		address := net.JoinHostPort(*target, port)
-		task <- address
-	}
-
-	close(task)
+	// Wait for all target scans to complete
 	wg.Wait()
 
-	duration := time.Since(time.Now())
-
-	fmt.Println("Scan complete!")
-	fmt.Printf("Open ports: %v\n", openPorts)
-	fmt.Printf("Number of open ports: %d\n", len(openPorts))
-	fmt.Printf("Time taken: %v\n", duration)
-	fmt.Printf("Total ports scanned: %d\n", *endPort-*startPort+1)
-
-	fmt.Println("Scan complete!")
-
+	fmt.Println("All scans complete!")
 }
