@@ -17,3 +17,6 @@ and then
 
 clone this repository 
 git clone -b <main> <https://github.com/MRJoe9999/golang-test.git>
+
+# youtube video
+https://youtu.be/1_ktBPghgO0
