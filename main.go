@@ -151,7 +151,11 @@ import (
 func main() {
 	target := flag.String("target", "localhost", "Target IP or hostname")
 
+	startPort := flag.Int("start-port", 1, "Starting port number")
+	endPort := flag.Int("end-port", 1024, "Ending port number")
+
 	flag.Parse()
 
 	fmt.Println("Scanning target:", *target)
+	fmt.Printf("Scanning ports from %d to %d\n", *startPort, *endPort)
 }
