@@ -176,18 +176,21 @@ func main() {
 
 	workers := flag.Int("workers", 100, "Number of concurrent workers")
 
+	timeout := flag.Int("timeout", 2, "Connectione timout in seconds")
+
 	flag.Parse()
 
 	fmt.Println("Scanning target:", *target)
 	fmt.Printf("Scanning ports from %d to %d\n", *startPort, *endPort)
 	fmt.Printf("Using %d concurrent workers\n", *workers)
+	fmt.Printf("Connection timeout: %d seconds\n", *timeout)
 
 	task := make(chan string, *workers)
 
 	var wg sync.WaitGroup
 
 	dialer := net.Dialer{
-		Timeout: 5 * time.Second,
+		Timeout: time.Duration(*timeout) * time.Second,
 	}
 
 	for i := 0; i < *workers; i++ {
