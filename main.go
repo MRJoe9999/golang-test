@@ -68,7 +68,7 @@ func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts 
 	mu.Unlock()
 }
 
-func scanTarget(target string, startPort, endPort, workers, timeout int, jsonOutput bool, results *[]Information) {
+func scanTarget(target string, ports []int, workers, timeout int, jsonOutput bool, results *[]Information) {
 	task := make(chan string, workers)
 
 	var wg sync.WaitGroup
@@ -78,7 +78,7 @@ func scanTarget(target string, startPort, endPort, workers, timeout int, jsonOut
 	}
 
 	var openPorts []string
-	totalPorts := endPort - startPort + 1
+	totalPorts := len(ports)
 	progress := 0
 	mu := sync.Mutex{}
 
@@ -92,15 +92,17 @@ func scanTarget(target string, startPort, endPort, workers, timeout int, jsonOut
 	}
 
 	// Distribute the tasks (ports) to scan
-	for j := startPort; j <= endPort; j++ {
-		port := strconv.Itoa(j)
-		address := net.JoinHostPort(target, port)
+	for _, port := range ports {
+		portStr := strconv.Itoa(port)
+		address := net.JoinHostPort(target, portStr)
 		task <- address
 	}
 	close(task)
 
+	// Wait for all workers to finish
 	wg.Wait()
 
+	// If the json flag is set, print the results in JSON format
 	if jsonOutput {
 		jsonResults, err := json.MarshalIndent(results, "", "    ")
 		if err != nil {
@@ -109,7 +111,7 @@ func scanTarget(target string, startPort, endPort, workers, timeout int, jsonOut
 		}
 		fmt.Println(string(jsonResults))
 	} else {
-
+		// Print results for the target in human-readable format
 		duration := time.Since(startTime)
 		fmt.Printf("\nScan complete for target: %s\n", target)
 		fmt.Printf("Open ports: %v\n", openPorts)
@@ -122,8 +124,7 @@ func scanTarget(target string, startPort, endPort, workers, timeout int, jsonOut
 func main() {
 	targets := flag.String("targets", "localhost", "Comma-separated list of target IPs or hostnames to scan")
 
-	startPort := flag.Int("start-port", 1, "Starting port number")
-	endPort := flag.Int("end-port", 1024, "Ending port number")
+	portsStr := flag.String("ports", "", "Comma-separated list of specific ports to scan")
 
 	workers := flag.Int("workers", 100, "Number of concurrent workers")
 
@@ -134,8 +135,24 @@ func main() {
 
 	targetList := strings.Split(*targets, ",")
 
+	var ports []int
+	if *portsStr != "" {
+		for _, port := range strings.Split(*portsStr, ",") {
+			p, err := strconv.Atoi(port)
+			if err != nil {
+				fmt.Printf("Invalid port number: %s\n", port)
+				continue
+			}
+			ports = append(ports, p)
+		}
+	}
+
+	if len(ports) == 0 {
+		ports = append(ports, 1, 1024)
+	}
+
 	fmt.Printf("Scanning targets: %v\n", targetList)
-	fmt.Printf("Scanning ports from %d to %d\n", *startPort, *endPort)
+	fmt.Printf("Scanning ports: %v\n", ports)
 	fmt.Printf("Using %d concurrent workers\n", *workers)
 	fmt.Printf("Connection timeout: %d seconds\n", *timeout)
 
@@ -146,7 +163,7 @@ func main() {
 		wg.Add(1)
 		go func(target string) {
 			defer wg.Done()
-			scanTarget(target, *startPort, *endPort, *workers, *timeout, *jsonOutput, &results)
+			scanTarget(target, ports, *workers, *timeout, *jsonOutput, &results)
 		}(target)
 	}
 
