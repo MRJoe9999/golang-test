@@ -152,13 +152,25 @@ import (
 	"time"
 )
 
-func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer) {
+func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts *[]string) {
 
 	defer wg.Done()
 	for addr := range task {
 
 		conn, err := dialer.Dial("tcp", addr)
 		if err == nil {
+
+			*openPorts = append(*openPorts, addr)
+
+			conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+			buf := make([]byte, 1024)
+			n, err := conn.Read(buf)
+			if err != nil {
+				fmt.Printf("No banner recieved from %s\n", addr)
+			} else {
+				fmt.Printf("Banner from %s: %s\n", addr, string(buf[:n]))
+			}
+
 			fmt.Printf("Connection to %s was successful\n", addr)
 			conn.Close()
 		} else {
@@ -193,9 +205,11 @@ func main() {
 		Timeout: time.Duration(*timeout) * time.Second,
 	}
 
+	var openPorts []string
+
 	for i := 0; i < *workers; i++ {
 		wg.Add(1)
-		go labours(&wg, task, dialer)
+		go labours(&wg, task, dialer, &openPorts)
 	}
 
 	for j := *startPort; j <= *endPort; j++ {
