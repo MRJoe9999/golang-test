@@ -1,149 +1,7 @@
-// Filename: main.go
-// Purpose: This program demonstrates how to create a TCP network connection using Go
-
-/*
 package main
 
 import (
-
-	"fmt"
-	"net"
-	"strconv"
-	"sync"
-	"time"
-
-)
-
-	func worker(wg *sync.WaitGroup, tasks chan string, dialer net.Dialer) {
-		defer wg.Done()
-		maxRetries := 3
-		for addr := range tasks {
-			var success bool
-			for i := range maxRetries {
-				conn, err := dialer.Dial("tcp", addr)
-				if err == nil {
-					conn.Close()
-					fmt.Printf("Connection to %s was successful\n", addr)
-					success = true
-					break
-				}
-				backoff := time.Duration(1<<i) * time.Second
-				fmt.Printf("Attempt %d to %s failed. Waiting %v...\n", i+1, addr, backoff)
-				time.Sleep(backoff)
-			}
-			if !success {
-				fmt.Printf("Failed to connect to %s after %d attempts\n", addr, maxRetries)
-			}
-		}
-	}
-
-func main() {
-
-		var wg sync.WaitGroup
-		tasks := make(chan string, 100)
-
-		target := "scanme.nmap.org"
-
-		dialer := net.Dialer{
-			Timeout: 5 * time.Second,
-		}
-
-		workers := 100
-
-		for i := 1; i <= workers; i++ {
-			wg.Add(1)
-			go worker(&wg, tasks, dialer)
-		}
-
-		ports := 512
-
-		for p := 1; p <= ports; p++ {
-			port := strconv.Itoa(p)
-			address := net.JoinHostPort(target, port)
-			tasks <- address
-		}
-		close(tasks)
-		wg.Wait()
-	}
-*/
-/*package main
-
-import (
-	"flag"
-	"fmt"
-	"net"
-	"sync"
-	"time"
-)
-
-func scanPort(target string, port int, timeout time.Duration, results chan<- int, wg *sync.WaitGroup) {
-	defer wg.Done()
-	address := fmt.Sprintf("%s:%d", target, port)
-	conn, err := net.DialTimeout("tcp", address, timeout)
-	if err == nil {
-		conn.Close()
-		results <- port
-	}
-}
-
-func main() {
-	var target string
-	var startPort, endPort, workers int
-	var timeoutSec int
-
-	flag.StringVar(&target, "target", "localhost", "Target IP or hostname")
-	flag.IntVar(&startPort, "start-port", 1, "Start of port range")
-	flag.IntVar(&endPort, "end-port", 1024, "End of port range")
-	flag.IntVar(&workers, "workers", 100, "Number of concurrent workers")
-	flag.IntVar(&timeoutSec, "timeout", 2, "Connection timeout in seconds")
-	flag.Parse()
-
-	timeout := time.Duration(timeoutSec) * time.Second
-	ports := make(chan int, workers)
-	results := make(chan int)
-	var openPorts []int
-	var wg sync.WaitGroup
-	startTime := time.Now()
-
-	// Worker pool
-	for i := 0; i < workers; i++ {
-		go func() {
-			for port := range ports {
-				scanPort(target, port, timeout, results, &wg)
-			}
-		}()
-	}
-
-	// Sending ports to be scanned
-	go func() {
-		for port := startPort; port <= endPort; port++ {
-			wg.Add(1)
-			ports <- port
-		}
-		close(ports)
-	}()
-
-	// Collect results
-	go func() {
-		for port := range results {
-			openPorts = append(openPorts, port)
-		}
-	}()
-
-	wg.Wait()
-	close(results)
-	elapsedTime := time.Since(startTime)
-
-	fmt.Println("Scan complete!")
-	fmt.Printf("Open ports: %v\n", openPorts)
-	fmt.Printf("Time taken: %s\n", elapsedTime)
-	fmt.Printf("Total ports scanned: %d\n", endPort-startPort+1)
-}
-*/
-
-package main
-
-import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net"
@@ -153,50 +11,66 @@ import (
 	"time"
 )
 
-func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts *[]string, mu *sync.Mutex, totalPorts *int, progress *int) {
+type Information struct {
+	Target     string   `json:"target"`
+	OpenPorts  []string `json:"open_ports"`
+	PortCount  int      `json:"port_count"`
+	TimeTaken  string   `json:"time_taken"`
+	TotalPorts int      `json:"total_ports"`
+	Progress   float64  `json:"progress"`
+}
 
+func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts *[]string, mu *sync.Mutex, totalPorts *int, progress *int, results *[]Information, target string) {
 	defer wg.Done()
-	for addr := range task {
 
+	for addr := range task {
 		conn, err := dialer.Dial("tcp", addr)
 		if err == nil {
-
-			mu.Lock()
-
 			*openPorts = append(*openPorts, addr)
-			*progress++
-
-			mu.Unlock()
-
 			conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 			buf := make([]byte, 1024)
 			n, err := conn.Read(buf)
 			if err != nil {
-				fmt.Printf("No banner recieved from %s\n", addr)
+				fmt.Printf("No banner received from %s\n", addr)
 			} else {
 				fmt.Printf("Banner from %s: %s\n", addr, string(buf[:n]))
 			}
 
 			fmt.Printf("Connection to %s was successful\n", addr)
 			conn.Close()
-			mu.Lock() // Lock to safely modify the progress in a concurrent environment
-			*progress++
-			fmt.Printf("Scanning port %d/%d - Progress: %.2f%%\n", *progress, *totalPorts, float64(*progress)*100/float64(*totalPorts))
-			mu.Unlock()
-		} else {
-			// Failed connection, print an error message
-			fmt.Printf("Failed to connect to %s: %v\n", addr, err)
-			mu.Lock() // Lock to safely modify the progress in a concurrent environment
-			*progress++
-			fmt.Printf("Scanning port %d/%d - Progress: %.2f%%\n", *progress, *totalPorts, float64(*progress)*100/float64(*totalPorts))
-			mu.Unlock()
-		}
 
+			mu.Lock()
+			*progress++
+			mu.Unlock()
+
+			fmt.Printf("Scanning port %d/%d - Progress: %.2f%%\n", *progress, *totalPorts, float64(*progress)*100/float64(*totalPorts))
+		} else {
+
+			fmt.Printf("Failed to connect to %s: %v\n", addr, err)
+			mu.Lock()
+			*progress++
+			mu.Unlock()
+
+			fmt.Printf("Scanning port %d/%d - Progress: %.2f%%\n", *progress, *totalPorts, float64(*progress)*100/float64(*totalPorts))
+		}
 	}
+
+	mu.Lock()
+	result := Information{
+		Target:     target,
+		OpenPorts:  *openPorts,
+		PortCount:  len(*openPorts),
+		TotalPorts: *totalPorts,
+		Progress:   float64(*progress) * 100 / float64(*totalPorts),
+		TimeTaken:  time.Since(time.Now()).String(),
+	}
+	*results = append(*results, result)
+	mu.Unlock()
 }
 
-func scanTarget(target string, startPort int, endPort int, workers int, timeout int) {
+func scanTarget(target string, startPort, endPort, workers, timeout int, jsonOutput bool, results *[]Information) {
 	task := make(chan string, workers)
+
 	var wg sync.WaitGroup
 
 	dialer := net.Dialer{
@@ -208,12 +82,16 @@ func scanTarget(target string, startPort int, endPort int, workers int, timeout 
 	progress := 0
 	mu := sync.Mutex{}
 
+	// Starting the scan
+	startTime := time.Now()
+
+	// Create worker goroutines
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
-		go labours(&wg, task, dialer, &openPorts, &mu, &totalPorts, &progress)
+		go labours(&wg, task, dialer, &openPorts, &mu, &totalPorts, &progress, results, target)
 	}
 
-	// Distribute tasks for the current target
+	// Distribute the tasks (ports) to scan
 	for j := startPort; j <= endPort; j++ {
 		port := strconv.Itoa(j)
 		address := net.JoinHostPort(target, port)
@@ -221,18 +99,24 @@ func scanTarget(target string, startPort int, endPort int, workers int, timeout 
 	}
 	close(task)
 
-	// Wait for all workers to finish
 	wg.Wait()
 
-	duration := time.Since(time.Now())
+	if jsonOutput {
+		jsonResults, err := json.MarshalIndent(results, "", "    ")
+		if err != nil {
+			fmt.Println("Error marshalling JSON:", err)
+			return
+		}
+		fmt.Println(string(jsonResults))
+	} else {
 
-	// Print results for the current target
-	fmt.Printf("\nScan complete for target: %s\n", target)
-	fmt.Printf("Open ports: %v\n", openPorts)
-	fmt.Printf("Number of open ports: %d\n", len(openPorts))
-	fmt.Printf("Time taken: %v\n", duration)
-	fmt.Printf("Total ports scanned: %d\n", totalPorts)
-
+		duration := time.Since(startTime)
+		fmt.Printf("\nScan complete for target: %s\n", target)
+		fmt.Printf("Open ports: %v\n", openPorts)
+		fmt.Printf("Number of open ports: %d\n", len(openPorts))
+		fmt.Printf("Time taken: %v\n", duration)
+		fmt.Printf("Total ports scanned: %d\n", totalPorts)
+	}
 }
 
 func main() {
@@ -244,10 +128,10 @@ func main() {
 	workers := flag.Int("workers", 100, "Number of concurrent workers")
 
 	timeout := flag.Int("timeout", 2, "Connection timeout in seconds")
+	jsonOutput := flag.Bool("json", false, "Output scan results in JSON format")
 
 	flag.Parse()
 
-	// Split the targets into a slice
 	targetList := strings.Split(*targets, ",")
 
 	fmt.Printf("Scanning targets: %v\n", targetList)
@@ -255,18 +139,22 @@ func main() {
 	fmt.Printf("Using %d concurrent workers\n", *workers)
 	fmt.Printf("Connection timeout: %d seconds\n", *timeout)
 
-	// Use goroutines to scan each target concurrently
+	var results []Information
+
 	var wg sync.WaitGroup
 	for _, target := range targetList {
 		wg.Add(1)
 		go func(target string) {
 			defer wg.Done()
-			scanTarget(target, *startPort, *endPort, *workers, *timeout)
+			scanTarget(target, *startPort, *endPort, *workers, *timeout, *jsonOutput, &results)
 		}(target)
 	}
 
-	// Wait for all target scans to complete
 	wg.Wait()
+
+	if !*jsonOutput {
+		fmt.Println("All scans complete!")
+	}
 
 	fmt.Println("All scans complete!")
 }
