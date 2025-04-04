@@ -11,6 +11,13 @@ import (
 	"time"
 )
 
+// function for workers to connect to the target address
+// and port
+// it takes a wait group, a channel for tasks, and a dialer
+// for establishing connections
+// it will attempt to connect to the address and port
+// if successful, it will close the connection
+// if failed, it will print an error message
 func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer) {
 
 	defer wg.Done()
@@ -26,6 +33,18 @@ func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer) {
 		}
 	}
 }
+
+// main function to parse command line arguments
+// and set up the scanning process
+// it takes the target address, starting and ending port numbers,
+// number of workers, and connection timeout
+// it creates a channel for tasks and a wait group for synchronization
+// it creates a dialer with the specified timeout
+// it starts the workers and sends the tasks to the channel
+// it waits for all workers to finish and closes the channel
+// it prints a message when the scan is complete
+// it uses the flag package to parse command line arguments
+// it uses the net package to create a dialer and establish connections
 
 func main() {
 	target := flag.String("target", "localhost", "Target IP or hostname")
