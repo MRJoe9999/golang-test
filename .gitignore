@@ -1,0 +1,6 @@
+/bin/
+/pkg/
+go.mod
+go.sum
+*.exe
+*.out
