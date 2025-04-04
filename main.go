@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// This is for the json format of the output
+// Information struct holds the scan result information
+// It includes the target IP, open ports, port count, time taken, total ports scanned, and progress percentage
 type Information struct {
 	Target     string   `json:"target"`
 	OpenPorts  []string `json:"open_ports"`
@@ -20,6 +23,9 @@ type Information struct {
 	Progress   float64  `json:"progress"`
 }
 
+// this is the worker function that will be used to scan the ports
+// It takes a wait group, a channel for tasks, a dialer for network connections, a slice to store open ports,
+// a mutex for synchronization, total ports, progress percentage, results slice, and target IP
 func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts *[]string, mu *sync.Mutex, totalPorts *int, progress *int, results *[]Information, target string) {
 	defer wg.Done()
 
@@ -56,6 +62,9 @@ func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts 
 	}
 
 	mu.Lock()
+	// Store the results in the results slice
+	// This is where we create the Information struct and append it to the results slice
+	// The Information struct contains the target IP, open ports, port count, time taken, total ports scanned, and progress percentage
 	result := Information{
 		Target:     target,
 		OpenPorts:  *openPorts,
@@ -67,6 +76,14 @@ func labours(wg *sync.WaitGroup, task chan string, dialer net.Dialer, openPorts 
 	*results = append(*results, result)
 	mu.Unlock()
 }
+
+// This function scans a target IP for open ports
+// It takes the target IP, a slice of ports to scan, number of workers, timeout duration, json output flag,
+// and a results slice to store the scan results
+// It creates a channel for tasks, a wait group for synchronization, and a dialer for network connections
+// It creates worker goroutines to scan the ports concurrently
+// It distributes the tasks (ports) to scan and waits for all workers to finish
+// If the json flag is set, it prints the results in JSON format
 
 func scanTarget(target string, ports []int, workers, timeout int, jsonOutput bool, results *[]Information) {
 	task := make(chan string, workers)
@@ -121,7 +138,15 @@ func scanTarget(target string, ports []int, workers, timeout int, jsonOutput boo
 	}
 }
 
+// This is the main function that sets up the command-line flags and arguments
+// It parses the flags and arguments, validates them, and calls the scanTarget function
+// It also handles the JSON output format if specified
+
 func main() {
+
+	// Command-line flags
+	// These flags allow the user to specify the target IPs, ports to scan, number of workers, timeout duration, and JSON output format
+	// The flags are parsed using the flag package
 	targets := flag.String("targets", "localhost", "Comma-separated list of target IPs or hostnames to scan")
 
 	portsStr := flag.String("ports", "", "Comma-separated list of specific ports to scan")
@@ -134,7 +159,8 @@ func main() {
 	flag.Parse()
 
 	targetList := strings.Split(*targets, ",")
-
+	// to store the ports from the command line
+	// If no ports are specified, default to scanning all ports from 1 to 1024
 	var ports []int
 	if *portsStr != "" {
 		for _, port := range strings.Split(*portsStr, ",") {
@@ -150,14 +176,15 @@ func main() {
 	if len(ports) == 0 {
 		ports = append(ports, 1, 1024)
 	}
-
+	//used for testing purposes
 	fmt.Printf("Scanning targets: %v\n", targetList)
 	fmt.Printf("Scanning ports: %v\n", ports)
 	fmt.Printf("Using %d concurrent workers\n", *workers)
 	fmt.Printf("Connection timeout: %d seconds\n", *timeout)
 
 	var results []Information
-
+	// Create a wait group to wait for all scans to complete
+	// The wait group is used to synchronize the completion of all goroutines
 	var wg sync.WaitGroup
 	for _, target := range targetList {
 		wg.Add(1)
@@ -168,7 +195,7 @@ func main() {
 	}
 
 	wg.Wait()
-
+	// If the json flag is set, print the results in JSON format
 	if !*jsonOutput {
 		fmt.Println("All scans complete!")
 	}
