@@ -221,6 +221,14 @@ func main() {
 	close(task)
 	wg.Wait()
 
+	duration := time.Since(time.Now())
+
+	fmt.Println("Scan complete!")
+	fmt.Printf("Open ports: %v\n", openPorts)
+	fmt.Printf("Number of open ports: %d\n", len(openPorts))
+	fmt.Printf("Time taken: %v\n", duration)
+	fmt.Printf("Total ports scanned: %d\n", *endPort-*startPort+1)
+
 	fmt.Println("Scan complete!")
 
 }
