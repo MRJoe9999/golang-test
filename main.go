@@ -154,8 +154,11 @@ func main() {
 	startPort := flag.Int("start-port", 1, "Starting port number")
 	endPort := flag.Int("end-port", 1024, "Ending port number")
 
+	workers := flag.Int("workers", 100, "Number of concurrent workers")
+
 	flag.Parse()
 
 	fmt.Println("Scanning target:", *target)
 	fmt.Printf("Scanning ports from %d to %d\n", *startPort, *endPort)
+	fmt.Printf("Using %d concurrent workers\n", *workers)
 }
